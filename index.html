@@ -69,7 +69,7 @@
             <!-- 2. CATEGORY SELECTION SCREEN -->
             <div id="screen-category" class="hidden flex-col items-center justify-center flex-grow text-center">
                 <h2 class="text-3xl font-bold mb-2">Select a Category</h2>
-                <p class="text-slate-400 mb-8">Choose a topic to test your skill.</p>
+                <p class="text-slate-400 mb-8">Choose a topic to test your knowledge.</p>
                 <div id="category-buttons" class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
                     <!-- Buttons injected via JS -->
                 </div>
@@ -86,6 +86,12 @@
 
                 <!-- Video Player Container -->
                 <div class="relative w-full bg-black rounded-xl overflow-hidden shadow-lg aspect-video mb-6 flex items-center justify-center">
+                    <div id="video-loading" class="absolute inset-0 flex items-center justify-center bg-black z-10 hidden">
+                        <svg class="animate-spin h-10 w-10 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
                     <video id="game-video" class="w-full h-full object-contain" autoplay muted loop playsinline>
                         <source src="" type="video/mp4">
                         Your browser does not support the video tag.
@@ -166,6 +172,7 @@
         let currentClipIndex = 0;
         let score = 0;
         let sessionHistory = []; 
+        let seenClips = {}; // Tracks clips the user has already played per category
         
         let filteredChoices = [];
         let autocompleteIndex = -1;
@@ -191,6 +198,7 @@
         
         // Game UI Elements
         const videoElement = document.getElementById('game-video');
+        const videoLoading = document.getElementById('video-loading');
         const clipCounter = document.getElementById('clip-counter');
         const playingCategoryLabel = document.getElementById('playing-category');
         const guessInput = document.getElementById('guess-input');
@@ -282,8 +290,25 @@
             // Filter clips by category
             const categoryClips = gameData.game.filter(clip => clip.category_name === category);
             
+            // Initialize seen array for this category if it doesn't exist
+            if (!seenClips[category]) {
+                seenClips[category] = [];
+            }
+
+            // Get clips that haven't been seen yet
+            let availableClips = categoryClips.filter(clip => !seenClips[category].includes(clip.url));
+
+            // If we don't have enough clips left, reset the seen history for this category
+            if (availableClips.length < maxClipsPerGame) {
+                seenClips[category] = [];
+                availableClips = [...categoryClips];
+            }
+            
             // Shuffle and pick up to maxClipsPerGame
-            currentSessionClips = shuffleArray([...categoryClips]).slice(0, maxClipsPerGame);
+            currentSessionClips = shuffleArray([...availableClips]).slice(0, maxClipsPerGame);
+            
+            // Mark the chosen clips as seen for future rounds
+            currentSessionClips.forEach(clip => seenClips[category].push(clip.url));
             
             if (currentSessionClips.length === 0) {
                 alert("No clips found for this category!");
@@ -310,6 +335,9 @@
             clipStartTime = Date.now(); // Fallback start time
             timeDisplay.textContent = 'Loading...';
 
+            // Show video loading indicator
+            videoLoading.classList.remove('hidden');
+
             // Load Video
             const clip = currentSessionClips[index];
             videoElement.src = clip.url;
@@ -318,8 +346,16 @@
             videoElement.play().catch(e => console.log("Autoplay prevented:", e));
         }
 
+        // Handle video buffering/loading states
+        videoElement.addEventListener('waiting', () => {
+            videoLoading.classList.remove('hidden');
+        });
+
         // Start the timer only when the video is actually ready and playing
         videoElement.addEventListener('playing', () => {
+            // Hide loading indicator
+            videoLoading.classList.add('hidden');
+
             // Only start if we are actively guessing (timer isn't running and input is visible)
             if (!timerInterval && !inputArea.classList.contains('hidden')) {
                 clipStartTime = Date.now();
